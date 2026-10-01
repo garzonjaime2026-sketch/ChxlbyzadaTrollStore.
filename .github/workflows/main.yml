@@ -1,0 +1,159 @@
+name: Construir TrollStore IPA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Crear aplicación
+        shell: bash
+        run: |
+          set -e
+
+          APP="build/Payload/Chxlbyzada.app"
+
+          mkdir -p "$APP"
+
+          cat > main.swift <<'EOF'
+          import UIKit
+          import WebKit
+
+          final class AppDelegate: UIResponder, UIApplicationDelegate {
+              var window: UIWindow?
+
+              func application(
+                  _ application: UIApplication,
+                  didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+              ) -> Bool {
+
+                  let window = UIWindow(frame: UIScreen.main.bounds)
+
+                  let webView = WKWebView(frame: window.bounds)
+                  webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+
+                  if let url = Bundle.main.url(forResource: "index", withExtension: "html") {
+                      webView.loadFileURL(
+                          url,
+                          allowingReadAccessTo: url.deletingLastPathComponent()
+                      )
+                  }
+
+                  window.rootViewController = UIViewController()
+                  window.rootViewController?.view = webView
+                  window.makeKeyAndVisible()
+
+                  self.window = window
+
+                  return true
+              }
+          }
+
+          UIApplicationMain(
+              CommandLine.argc,
+              CommandLine.unsafeArgv,
+              nil,
+              NSStringFromClass(AppDelegate.self)
+          )
+          EOF
+
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+
+          xcrun --sdk iphoneos swiftc \
+            -sdk "$SDK" \
+            -target arm64-apple-ios15.0 \
+            -framework UIKit \
+            -framework WebKit \
+            main.swift \
+            -o "$APP/Chxlbyzada"
+
+      - name: Copiar HTML
+        shell: bash
+        run: |
+          set -e
+
+          HTML=$(find . -maxdepth 1 -type f -iname "*.html" | head -n 1)
+
+          if [ -z "$HTML" ]; then
+            echo "ERROR: No se encontró ningún archivo HTML"
+            exit 1
+          fi
+
+          cp "$HTML" build/Payload/Chxlbyzada.app/index.html
+
+      - name: Crear Info.plist
+        shell: bash
+        run: |
+          cat > build/Payload/Chxlbyzada.app/Info.plist <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleDevelopmentRegion</key>
+              <string>es</string>
+
+              <key>CFBundleDisplayName</key>
+              <string>Chxlbyzada</string>
+
+              <key>CFBundleExecutable</key>
+              <string>Chxlbyzada</string>
+
+              <key>CFBundleIdentifier</key>
+              <string>com.chxlbyzada.trollstore</string>
+
+              <key>CFBundleInfoDictionaryVersion</key>
+              <string>6.0</string>
+
+              <key>CFBundleName</key>
+              <string>Chxlbyzada</string>
+
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+
+              <key>CFBundleShortVersionString</key>
+              <string>1.0</string>
+
+              <key>CFBundleVersion</key>
+              <string>1</string>
+
+              <key>LSRequiresIPhoneOS</key>
+              <true/>
+
+              <key>MinimumOSVersion</key>
+              <string>15.0</string>
+
+              <key>UIDeviceFamily</key>
+              <array>
+                  <integer>1</integer>
+                  <integer>2</integer>
+              </array>
+
+              <key>UILaunchScreen</key>
+              <dict/>
+
+              <key>UIRequiredDeviceCapabilities</key>
+              <array>
+                  <string>arm64</string>
+              </array>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Crear IPA
+        shell: bash
+        run: |
+          set -e
+
+          cd build
+          zip -r ../Chxlbyzada.ipa Payload
+
+      - name: Subir IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Chxlbyzada-TrollStore
+          path: Chxlbyzada.ipa
